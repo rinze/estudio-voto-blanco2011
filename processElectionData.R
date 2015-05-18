@@ -26,8 +26,8 @@ if(!exists("elections")) {
                                           elections$Nombre.de.Provincia, 
                                           perl = TRUE)
     
-    # This row is wrong
-    elections <- elections[-8075, ]
+    # Some rows are wrong, remove them
+    elections <- elections[complete.cases(elections), ]
 }
 
 # Process each town
@@ -37,6 +37,5 @@ results <- lapply(1:nrow(elections), function(t) {
                      perl = TRUE)
     res$province <- gsub("[\\s\\n]+$", "", elections[t, ]$Nombre.de.Provincia, 
                          perl = TRUE)
-    print(res)
     return(res)
 })
