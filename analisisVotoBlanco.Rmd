@@ -1,0 +1,195 @@
+---
+title: "Elecciones 2011 - Análisis votos en blanco"
+output: html_document
+---
+
+```{r}
+knitr::opts_chunk$set(fig.width = 8, fig.height = 8)
+source("functions.R")
+library(ggplot2)
+theme_set(theme_bw(16))
+# Read raw data
+file_path <- "~/Dropbox/data/elecciones20112015/04_201105_1_sheet1.csv"
+elections <- readRawData(file_path)
+# Processed data, saved by processElectionData.R
+load("~/Dropbox/data/elecciones20112015/elections2011_processed.Rda")
+```
+
+Hay `r nrow(elections)` localidades en total. Por curiosidad, ¿cómo se reparte esto en términos de población?
+
+```{r}
+ggplot(elections) + geom_histogram(aes(x = Población), fill = "white",
+                                   color = "black", binwidth = 1 / 10) +
+    scale_x_log10(breaks = 10 ^ (1:6),
+                  labels = c(as.character(10 ^ (1:4)), 
+                             "100000", "1000000")) + 
+    xlab("Población (escala logarítmica, base 10)") +
+    ylab("Número de municipios\n") +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+En general, ¿cuánto voto en blanco hay?
+
+```{r}
+elections$voto_blanco_p <- with(elections, 
+                                (Votos.en.blanco / Votos.válidos) * 100)
+
+# Create a new ordered factor, plot looks better
+elections$comunidad_blanco <- reorder(elections$Nombre.de.Comunidad,
+                                      elections$voto_blanco_p,
+                                      median)
+
+ggplot(elections) + geom_boxplot((aes(x = comunidad_blanco, 
+                                      y = voto_blanco_p))) +
+    coord_flip() + xlab("Comunidad o Ciudad Autónoma\n") +
+    ylab("\nPorcentaje de voto en blanco [%]")
+```
+
+En general se vota poco en blanco (de media, un `r mean(elections$voto_blanco_p)`), pero hay municipios pequeños en los que está a la orden del día:
+
+```{r}
+elections[order(-elections$voto_blanco_p), c("Nombre.de.Municipio", 
+                                             #"Nombre.de.Comunidad", 
+                                             "voto_blanco_p", 
+                                             "Población")][1:20, ]
+```
+
+Ya que estamos, lo mismo se puede hacer para el voto nulo:
+
+```{r}
+elections$voto_nulo_p <- with(elections, 
+                                (Votos.nulos / Votos.válidos) * 100)
+
+# Create a new ordered factor, plot looks better
+elections$comunidad_nulo <- reorder(elections$Nombre.de.Comunidad,
+                                      elections$voto_nulo_p,
+                                      median)
+
+ggplot(elections) + geom_boxplot((aes(x = comunidad_nulo, 
+                                      y = voto_nulo_p))) +
+    coord_flip() + xlab("Comunidad o Ciudad Autónoma\n") +
+    ylab("\nPorcentaje de voto nulo [%]")
+```
+
+Ese pueblo de La Rioja es `r elections[which(elections$voto_nulo_p == max(elections$voto_nulo_p)), "Nombre.de.Municipio"]`, donde [votaron 8 personas](http://elecciones.lainformacion.com/municipales/2011/la-rioja/la-rioja/valdemadera.html) de 9 censadas y hubo 5 votos nulos.
+
+El código para la función que calcula D'Hont no tiene en cuenta estas situaciones anómalas y realmente no sé cómo se procede al cálculo de concejales en estos casos. Además, en localidades de menos de 250 habitantes el sistema es [ligeramente diferente](http://www.juntaelectoralcentral.es/portal/page/portal/JuntaElectoralCentral/Ley%20Org%C3%A1nica%20del%20R%C3%A9gimen%20Electoral%20General?_piref53_9636063_53_9634063_9634063.next_page=/jec/ContenidoLeyRegimenElectoral&idContenido=424262&idLeyJunta=1&idLeyModificacion=423557) (gracias, [Prosikito](https://twitter.com/prosikito8/status/600325850509217792)) y el archivo de Excel tiene otra hoja con datos para estos municipios. **De aquí en adelante, utilizaré únicamente datos de municipios con más de 250 habitantes**.
+
+```{r}
+elections <- elections[elections$Población > 250, ]
+election_processed <- election_processed[election_processed$town %in% elections$Nombre.de.Municipio,]
+```
+
+Quedan un total de `r nrow(elections)` localidades a analizar. Podemos repetir los gráficos anteriores:
+
+```{r}
+ggplot(elections) + geom_boxplot((aes(x = comunidad_blanco, 
+                                      y = voto_blanco_p))) +
+    coord_flip() + xlab("Comunidad o Ciudad Autónoma\n") +
+    ylab("\nPorcentaje de voto en blanco [%]")
+
+ggplot(elections) + geom_boxplot((aes(x = comunidad_nulo, 
+                                      y = voto_nulo_p))) +
+    coord_flip() + xlab("Comunidad o Ciudad Autónoma\n") +
+    ylab("\nPorcentaje de voto nulo [%]")
+```
+
+¿Cuántas mayorías absolutas se repartieron por España?
+
+```{r}
+absol <- by(election_processed[,  c("party", "seats", "method")],
+            election_processed$town,
+            function(x) {
+                # Current government, who and what condition
+                cur <- x[x$method == "current", ]
+                current_government <- cur$party[1]
+                current_seats <- cur$seats[1]
+                current_maj <- cur$seats[1] > sum(cur$seats[-1])
+                    
+                # Without considering blanks
+                bla <- x[x$method == "noblanks", ]
+                blanks_government <- bla$party[1]
+                blanks_seats <- bla$seats[1]
+                blanks_maj <- bla$seats[1] > sum(bla$seats[-1])
+                
+                # Without threshold
+                thr <- x[x$method == "nothreshold", ]
+                threshold_government <- thr$party[1]
+                threshold_seats <- thr$seats[1]
+                threshold_maj <- thr$seats[1] > sum(thr$seats[-1])
+                
+                # Look for changes in seats
+                current_blank <- nrow(cur) != nrow(bla) ||
+                                 any(cur$seats != bla$seats)
+                
+                current_threshold <- nrow(cur) != nrow(thr) ||
+                                     any(cur$seats != thr$seats)
+                
+                return(data.frame(current_government = current_government,
+                                  current_seats = current_seats,
+                                  current_maj = current_maj,                                  
+                                  blanks_government = blanks_government,
+                                  blanks_seats = blanks_seats,
+                                  blanks_maj = blanks_maj,
+                                  threshold_government = threshold_government,
+                                  threshold_seats = threshold_seats,
+                                  threshold_maj = threshold_maj,
+                                  current_blank = current_blank,
+                                  current_threshold = current_threshold))
+
+            })
+
+nabsol <- names(absol)
+absol <- do.call(rbind, absol)
+absol$town <- nabsol
+```
+
+¿En cuántos municipios cambiaría el número de concejales del partido en la mayoría? Pocos. Tabla debajo:
+
+```{r}
+sum(absol$current_seats != absol$blanks_seats)
+absol[which(absol$current_seats != absol$blanks_seats), "town"]
+election_processed[election_processed$town %in% absol[which(absol$current_seats != absol$blanks_seats), "town"] & election_processed$method %in% c("current", "noblanks"), c("party", "seats", "method", "town")]
+```
+
+Solamente en un 1 caso una localidad dejaría de tener un gobierno con mayoría absoluta. Y el agraciado es:
+
+```{r}
+absol[absol$current_maj != absol$blanks_maj, "town"]
+```
+
+Esto es solamente en casos en los que es el partido más votado el que pierde un concejal. Si echamos un ojo a cualquier partido con representación, hay movimientos de concejales en 29 localidades:
+
+```{r}
+table(absol$current_blank)
+absol[absol$current_blank, "town"]
+election_processed[election_processed$town %in% absol[absol$current_blank, "town"] & election_processed$method %in% c("current", "noblanks"), c("party", "seats", "method", "town")]
+```
+
+¿Cómo son estas ciudades?
+
+```{r}
+changed_towns <- absol[absol$current_blank, "town"]
+elections_changed <- elections[elections$Nombre.de.Municipio %in% changed_towns, ]
+mean(elections_changed$Población)
+
+ggplot(elections_changed) + geom_histogram(aes(x = Población), fill = "white",
+                                   color = "black", binwidth = 1 / 50) +
+    scale_x_log10(breaks = c(seq(10000, 100000, 10000), 4e5),
+                  labels = c(as.character(seq(10000, 90000, 10000)), "100000",
+                             "400000")) + 
+    xlab("Población (escala logarítmica, base 10)") +
+    ylab("Número de municipios\n") +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+Son sitios más o menos grandecitos, de unos 50.000 habitantes de media; el mayor de ellos: Las Palmas de Gran Canaria. Tiene sentido: el umbral del 5 % hace efecto después de que se hayan hecho unos pocos repartos mediante D'Hont.
+
+Todo esto tiene en cuenta un efecto muy poco realista pero posible con la ley actual: que no haya voto en blanco o éste se minimice lo máximo posible. Si atendemos a otros escenarios hipotéticos, como que no exista un umbral de voto mínimo para acceder al reparto de concejales, el cuento cambia bastante.
+
+En ese caso, en todas estas localidades, anteriormente gobernadas por mayoría absoluta, hay que empezar a hacer pactos:
+
+```{r}
+absol[absol$current_maj != absol$threshold_maj & !absol$threshold_maj, "town"]
+```
+
