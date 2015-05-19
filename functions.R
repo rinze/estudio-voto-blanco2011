@@ -99,3 +99,23 @@ getTownResults <- function(town_row) {
     return(rbind(dhont_current, dhont_blanks, dhont_thres))
     
 }
+
+readRawData <- function(file_path) {
+    elections <- read.csv(file_path, stringsAsFactors = FALSE,
+                          comment.char = "#")
+    # Remove blank spaces
+    elections$Nombre.de.Municipio <- gsub("[\\s\\n]+$", "", 
+                                          elections$Nombre.de.Municipio, 
+                                          perl = TRUE)
+    elections$Nombre.de.Provincia <- gsub("[\\s\\n]+$", "", 
+                                          elections$Nombre.de.Provincia, 
+                                          perl = TRUE)
+    elections$Nombre.de.Comunidad <- gsub("[\\s\\n]+$", "", 
+                                          elections$Nombre.de.Comunidad, 
+                                          perl = TRUE)
+    
+    # Some rows are wrong, remove them
+    elections <- elections[complete.cases(elections), ]
+    
+    return(elections)
+}
