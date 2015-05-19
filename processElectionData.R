@@ -16,22 +16,11 @@ file_path <- "~/Dropbox/data/elecciones20112015/04_201105_1_sheet1.csv"
 
 # "Big" CSV file, read data only if not already read
 if(!exists("elections")) {
-    elections <- read.csv(file_path, stringsAsFactors = FALSE,
-                          comment.char = "#")
-    # Remove blank spaces
-    elections$Nombre.de.Municipio <- gsub("[\\s\\n]+$", "", 
-                                          elections$Nombre.de.Municipio, 
-                                          perl = TRUE)
-    elections$Nombre.de.Provincia <- gsub("[\\s\\n]+$", "", 
-                                          elections$Nombre.de.Provincia, 
-                                          perl = TRUE)
-    
-    # Some rows are wrong, remove them
-    elections <- elections[complete.cases(elections), ]
+    elections <- readRawData(file_path)
 }
 
 # Process each town
-results <- lapply(1:nrow(elections), function(t) {
+election_processed <- lapply(1:nrow(elections), function(t) {
     res <- getTownResults(elections[t, ])
     res$town <- gsub("[\\s\\n]+$", "", elections[t, ]$Nombre.de.Municipio, 
                      perl = TRUE)
@@ -39,3 +28,8 @@ results <- lapply(1:nrow(elections), function(t) {
                          perl = TRUE)
     return(res)
 })
+
+election_processed <- do.call(rbind, election_processed)
+
+save(election_processed, 
+     file = "~/Dropbox/data/elecciones20112015/elections2011_processed.Rda")
