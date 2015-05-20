@@ -97,8 +97,9 @@ ggplot(elections) + geom_boxplot((aes(x = comunidad_nulo,
 ¿Cuántas mayorías absolutas se repartieron por España?
 
 ```{r}
-absol <- by(election_processed[,  c("party", "seats", "method")],
-            election_processed$town,
+election_processed$local <- paste(election_processed$town, election_processed$province)
+absol <- by(election_processed[,  c("party", "seats", "method", "town", "province")],
+            election_processed$local,
             function(x) {
                 # Current government, who and what condition
                 cur <- x[x$method == "current", ]
@@ -125,7 +126,9 @@ absol <- by(election_processed[,  c("party", "seats", "method")],
                 current_threshold <- nrow(cur) != nrow(thr) ||
                                      any(cur$seats != thr$seats)
                 
-                return(data.frame(current_government = current_government,
+                return(data.frame(town = unique(x$town),
+                                  province = unique(x$province), 
+                                  current_government = current_government,
                                   current_seats = current_seats,
                                   current_maj = current_maj,                                  
                                   blanks_government = blanks_government,
@@ -139,9 +142,8 @@ absol <- by(election_processed[,  c("party", "seats", "method")],
 
             })
 
-nabsol <- names(absol)
 absol <- do.call(rbind, absol)
-absol$town <- nabsol
+absol$town <- as.character(absol$town)
 ```
 
 ¿En cuántos municipios cambiaría el número de concejales del partido en la mayoría? Pocos. Tabla debajo:
@@ -193,3 +195,15 @@ En ese caso, en todas estas localidades, anteriormente gobernadas por mayoría a
 absol[absol$current_maj != absol$threshold_maj & !absol$threshold_maj, "town"]
 ```
 
+Y éste es el listado de movimientos total:
+
+```{r}
+t1 <- election_processed[election_processed$town %in% absol[absol$current_threshold, "town"] & election_processed$method %in% c("current", "nothreshold"), c("party", "seats", "method", "town")]
+# Remove long names
+t1$town <- ifelse(grepl("/", t1$town), 
+                  strsplit(t1$town, "/", fixed = TRUE)[[1]], 
+                  t1$town)
+# Long party names
+t1$party <- strtrim(t1$party, 15)
+t1
+```
